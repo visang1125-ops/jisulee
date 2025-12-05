@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DollarSign, Percent, TrendingUp, Target, RefreshCw, FileDown, FileJson } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -118,11 +118,11 @@ export default function Dashboard({ filters }: DashboardProps) {
     queryClient.invalidateQueries({ queryKey: ["/api/budget"] });
   };
 
-  const showSuccessMessage = (type: string) => {
+  const showSuccessMessage = useCallback((type: string) => {
     setDownloadType(type);
     setDownloadSuccess(true);
-    setTimeout(() => setDownloadSuccess(false), 3000);
-  };
+    setTimeout(() => setDownloadSuccess(false), API_CONSTANTS.DOWNLOAD_DELAY_MS * 6);
+  }, []);
 
   const handleDownloadCSV = async () => {
     try {
@@ -170,9 +170,9 @@ export default function Dashboard({ filters }: DashboardProps) {
     } catch (error) {
       logger.error("Failed to download template:", error);
     }
-  };
+  }, [showSuccessMessage]);
 
-  const handleTableDownloadCSV = () => {
+  const handleTableDownloadCSV = useCallback(() => {
     const headers = ["부서", "계정과목", "예산 내/외", "사업구분", "프로젝트명", "산정근거/집행내역", "고정비/변동비", "월", "연도", "예산", "실제", "집행률"];
     const csvData = budgetData.map(entry => [
       entry.department,
@@ -200,7 +200,7 @@ export default function Dashboard({ filters }: DashboardProps) {
     link.download = `budget_filtered_${new Date().toISOString().split("T")[0]}.csv`;
     link.click();
     showSuccessMessage("필터링된 CSV");
-  };
+  }, [budgetData, showSuccessMessage]);
 
   const handleImport = async (entries: Array<{
     department: string;

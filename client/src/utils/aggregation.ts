@@ -1,4 +1,5 @@
 import type { BudgetEntry } from "@/hooks/useBudgetData";
+import { MONTHS_PER_YEAR } from "@shared/constants";
 
 /**
  * 집계 중간값 타입
@@ -133,5 +134,30 @@ export function aggregateByAccount(
     ...result,
     accountCategory: result.key,
   }));
+}
+
+/**
+ * 월별 데이터 집계
+ * 
+ * 필터가 적용된 데이터를 월별로 집계하여 집행률 추이를 계산합니다.
+ * 
+ * @param data 필터가 적용된 예산 데이터
+ * @param settlementMonth 결산 마감월 (1~12)
+ * @returns 월별 집계 결과 (집행률, 목표율, 예상 여부 포함)
+ */
+export function aggregateByMonth(data: BudgetEntry[], settlementMonth: number) {
+  return Array.from({ length: MONTHS_PER_YEAR }, (_, i) => {
+    const month = i + 1;
+    const monthData = data.filter(entry => entry.month <= month && entry.month <= settlementMonth);
+    const monthBudgetData = data.filter(entry => entry.month <= Math.min(month, settlementMonth));
+    const monthBudget = monthBudgetData.reduce((sum, item) => sum + item.budgetAmount, 0);
+    const monthActual = monthData.reduce((sum, item) => sum + item.actualAmount, 0);
+    return {
+      month: `${month}월`,
+      executionRate: month <= settlementMonth ? (monthBudget > 0 ? (monthActual / monthBudget) * 100 : 0) : null,
+      targetRate: (month / MONTHS_PER_YEAR) * 100,
+      isProjected: month > settlementMonth,
+    };
+  });
 }
 

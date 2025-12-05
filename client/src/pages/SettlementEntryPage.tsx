@@ -114,7 +114,7 @@ export default function SettlementEntryPage() {
       // 데이터 새로고침
       await queryClient.invalidateQueries({ queryKey: ["/api/budget"] });
 
-      setTimeout(() => setIsSuccess(false), 2000);
+      setTimeout(() => setIsSuccess(false), API_CONSTANTS.SUCCESS_MESSAGE_DISPLAY_MS);
     } catch (error) {
       toast({
         title: "추가 실패",

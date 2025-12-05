@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DEFAULT_YEAR, MONTHS_PER_YEAR } from "@shared/constants";
 import { 
   LayoutDashboard, 
   BarChart3, 
@@ -34,6 +35,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { DEPARTMENTS, ACCOUNT_CATEGORIES, DEFAULT_FILTERS, type ViewType } from "@/lib/constants";
 import { shortenDepartmentName } from "@/lib/utils";
 import type { FilterState } from "@/hooks/useBudgetData";
+import { API_CONSTANTS } from "@/lib/constants-api";
 
 interface AppSidebarProps {
   currentView: ViewType;
@@ -117,12 +119,12 @@ export default function AppSidebar({ currentView, onViewChange, onApplyFilters, 
 
   const handleApply = async () => {
     setIsApplying(true);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, API_CONSTANTS.FILTER_APPLY_DELAY_MS));
     onApplyFilters?.(filters);
     setAppliedFilters(filters);
     setIsApplying(false);
     setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 2000);
+    setTimeout(() => setShowSuccess(false), API_CONSTANTS.SUCCESS_MESSAGE_DISPLAY_MS);
   };
 
   const handleReset = () => {

@@ -1,3 +1,5 @@
+import { DEFAULT_YEAR, MONTHS_PER_YEAR } from "@shared/constants";
+
 // 부서 목록 (shared/constants.ts와 동기화 필요)
 export const DEPARTMENTS = [
   "DX전략 Core Group",
@@ -48,7 +50,7 @@ export const SETTLEMENT_MONTH = DEFAULT_SETTLEMENT_MONTH;
 // 기본 필터 상태
 export const DEFAULT_FILTERS = {
   startMonth: 1,
-  endMonth: 12,
+  endMonth: MONTHS_PER_YEAR,
   year: DEFAULT_YEAR,
   departments: [...DEPARTMENTS],
   accountCategories: [...ACCOUNT_CATEGORIES],

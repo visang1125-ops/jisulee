@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // 에러 로깅 (실제 환경에서는 에러 리포팅 서비스로 전송)
     // 에러는 항상 로그 (프로덕션에서도 필요)
-    console.error("[ErrorBoundary] Caught an error:", error, errorInfo);
+    logger.error("[ErrorBoundary] Caught an error:", error, errorInfo);
     this.setState({
       error,
       errorInfo,

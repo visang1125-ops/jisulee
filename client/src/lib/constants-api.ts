@@ -24,5 +24,7 @@ export const API_CONSTANTS = {
   
   // UI 딜레이
   DOWNLOAD_DELAY_MS: 500, // 다운로드 시뮬레이션 딜레이
+  SUCCESS_MESSAGE_DISPLAY_MS: 3000, // 성공 메시지 표시 시간
+  FILTER_APPLY_DELAY_MS: 300, // 필터 적용 딜레이
 } as const;
 

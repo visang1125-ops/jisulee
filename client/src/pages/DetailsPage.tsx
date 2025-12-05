@@ -74,20 +74,6 @@ export default function DetailsPage({ filters }: DetailsPageProps) {
     );
   }
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      if (sortDirection === "asc") setSortDirection("desc");
-      else if (sortDirection === "desc") {
-        setSortDirection(null);
-        setSortField(null);
-      }
-    } else {
-      setSortField(field);
-      setSortDirection("asc");
-    }
-    setCurrentPage(1);
-  };
-
   // 검색 필터링 (메모이제이션)
   const filteredData = useMemo(() => {
     if (!searchTerm.trim()) return budgetData;
@@ -122,29 +108,9 @@ export default function DetailsPage({ filters }: DetailsPageProps) {
   }, [handleSort, setCurrentPage]);
 
 
-  const handleDownloadCSV = () => {
-    const headers = ["부서", "계정과목", "월", "연도", "예산", "실제 집행", "집행률"];
-    const csvData = sortedData.map(entry => [
-      entry.department,
-      entry.accountCategory,
-      entry.month,
-      entry.year,
-      entry.budgetAmount,
-      entry.actualAmount,
-      entry.executionRate.toFixed(2),
-    ]);
-
-    const csvContent = [
-      headers.join(","),
-      ...csvData.map(row => row.join(",")),
-    ].join("\n");
-
-    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `budget_details_${new Date().toISOString().split("T")[0]}.csv`;
-    link.click();
-  };
+  const handleDownloadCSV = useCallback(() => {
+    downloadCSV(sortedData, `budget_details_${new Date().toISOString().split("T")[0]}.csv`);
+  }, [sortedData]);
 
   // 총계 계산 (메모이제이션)
   const { totalBudget, totalActual } = useMemo(() => {
@@ -243,7 +209,7 @@ export default function DetailsPage({ filters }: DetailsPageProps) {
                 <TableRow className="bg-muted/50">
                   <TableHead>
                     <Button variant="ghost" size="sm" onClick={() => handleSort("department")} className="gap-1">
-                      부서 <SortIcon field="department" />
+                      부서 <SortIcon field="department" sortField={sortField} sortDirection={sortDirection} />
                     </Button>
                   </TableHead>
                   <TableHead>

@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { useBudgetData, aggregateByDepartment, aggregateByAccount, calculateStats, type FilterState } from "@/hooks/useBudgetData";
 import { formatCurrency, formatShortCurrency, getExecutionRateColor, shortenDepartmentName } from "@/lib/utils";
 import { getSettlementMonth } from "@/lib/constants";
+import { API_CONSTANTS } from "@/lib/constants-api";
 
 interface ReportsPageProps {
   filters?: FilterState;
@@ -104,7 +105,7 @@ export default function ReportsPage({ filters }: ReportsPageProps) {
   const showSuccessMessage = (type: string) => {
     setDownloadType(type);
     setDownloadSuccess(true);
-    setTimeout(() => setDownloadSuccess(false), 3000);
+    setTimeout(() => setDownloadSuccess(false), API_CONSTANTS.SUCCESS_MESSAGE_DISPLAY_MS);
   };
 
   const handleDownloadCSV = async () => {

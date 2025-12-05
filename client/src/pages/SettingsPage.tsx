@@ -10,6 +10,8 @@ import { useTheme } from "@/components/ThemeProvider";
 import StatusMessage from "@/components/StatusMessage";
 import { getSettlementMonth, DEFAULT_SETTLEMENT_MONTH } from "@/lib/constants";
 import { useQueryClient } from "@tanstack/react-query";
+import { API_CONSTANTS } from "@/lib/constants-api";
+import { DEFAULT_YEAR, MONTHS_PER_YEAR } from "@shared/constants";
 
 export default function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
@@ -37,7 +39,7 @@ export default function SettingsPage() {
     queryClient.invalidateQueries({ queryKey: ["/api/budget"] });
     
     setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    setTimeout(() => setSaveSuccess(false), API_CONSTANTS.SUCCESS_MESSAGE_DISPLAY_MS);
   };
 
   const handleResetData = () => {
