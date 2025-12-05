@@ -1,17 +1,26 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { DollarSign, Percent, TrendingUp, Target, RefreshCw, FileDown, FileJson } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import KPICard from "@/components/KPICard";
 import DepartmentBarChart from "@/components/DepartmentBarChart";
 import ExecutionRateLineChart from "@/components/ExecutionRateLineChart";
 import BudgetDonutChart from "@/components/BudgetDonutChart";
-import BudgetDataTable, { type BudgetTableEntry } from "@/components/BudgetDataTable";
+import BudgetDataTable from "@/components/BudgetDataTable";
+import ImportPreviewDialog from "@/components/ImportPreviewDialog";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import StatusMessage from "@/components/StatusMessage";
-import type { FilterState } from "@/components/AppSidebar";
-
-const SETTLEMENT_MONTH = 9;
+import ErrorDisplay from "@/components/ErrorDisplay";
+import DashboardSkeleton from "@/components/DashboardSkeleton";
+import { useBudgetData, aggregateByDepartment, aggregateByAccount, aggregateByMonth, calculateStats, type FilterState } from "@/hooks/useBudgetData";
+import { formatShortCurrency } from "@/lib/utils";
+import { getSettlementMonth } from "@/lib/constants";
+import { sumBy } from "@/utils/calculations";
+import { MONTHS_PER_YEAR } from "@shared/constants";
+import { logger } from "@/lib/logger";
+import { downloadCSV, downloadJSON } from "@/utils/csv-export";
+import { API_CONSTANTS } from "@/lib/constants-api";
 
 interface DashboardProps {
   filters?: FilterState;
@@ -20,89 +29,94 @@ interface DashboardProps {
 export default function Dashboard({ filters }: DashboardProps) {
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [downloadType, setDownloadType] = useState<string>("");
+  const [settlementMonth, setSettlementMonth] = useState(() => getSettlementMonth());
+  const queryClient = useQueryClient();
 
-  // Build query string from filters
-  const buildQueryString = () => {
-    if (!filters) return "";
-    const params = new URLSearchParams();
-    if (filters.startMonth) params.append("startMonth", filters.startMonth.toString());
-    if (filters.endMonth) params.append("endMonth", filters.endMonth.toString());
-    if (filters.year) params.append("year", filters.year.toString());
-    filters.departments?.forEach(d => params.append("departments", d));
-    filters.accountCategories?.forEach(c => params.append("accountCategories", c));
-    return params.toString();
+  // 필터가 적용된 데이터
+  const { data: budgetData = [], isLoading, isRefetching, isError, error, refetch } = useBudgetData(filters);
+  // 전체 데이터 (총 예산 계산용)
+  const { data: allBudgetData = [] } = useBudgetData(undefined);
+
+  // 결산 마감월 기준 누적 집행률 계산 (메모이제이션)
+  const { settledBudget, settledActual, executionRate } = useMemo(() => {
+    const settledEntries = budgetData.filter(entry => entry.month <= settlementMonth);
+    const budget = sumBy(settledEntries, (item) => item.budgetAmount);
+    const actual = sumBy(settledEntries, (item) => item.actualAmount);
+    const rate = budget > 0 ? actual / budget : 0;
+    return { settledBudget: budget, settledActual: actual, executionRate: rate };
+  }, [budgetData, settlementMonth]);
+
+  // 통계 계산 (메모이제이션)
+  const stats = useMemo(
+    () => calculateStats(budgetData, settlementMonth, allBudgetData),
+    [budgetData, settlementMonth, allBudgetData]
+  );
+
+  // 부서별 데이터 집계 (메모이제이션)
+  const departmentData = useMemo(
+    () => aggregateByDepartment(budgetData, settlementMonth),
+    [budgetData, settlementMonth]
+  );
+
+  // 계정과목별 데이터 집계 (메모이제이션)
+  const accountData = useMemo(
+    () => aggregateByAccount(budgetData, settlementMonth),
+    [budgetData, settlementMonth]
+  );
+
+  // 월별 데이터 집계 (메모이제이션)
+  const monthlyData = useMemo(
+    () => aggregateByMonth(budgetData, settlementMonth),
+    [budgetData, settlementMonth]
+  );
+
+  // 월별 예산 및 결산 데이터 생성 (예상 수치 포함) (메모이제이션)
+  const monthlyBudgetData = useMemo(() => {
+    return Array.from({ length: MONTHS_PER_YEAR }, (_, i) => {
+      const month = i + 1;
+      const monthEntries = budgetData.filter(entry => entry.month === month);
+      const budget = sumBy(monthEntries, (item) => item.budgetAmount);
+      
+      let actual: number | null = null;
+      let projected: number | null = null;
+      
+      if (month <= settlementMonth) {
+        // 결산 마감월 이하: 실제 집행 금액만
+        actual = sumBy(monthEntries, (item) => item.actualAmount);
+        // 결산 마감월의 경우, 예상 라인과 연결하기 위해 projected에도 값 설정
+        projected = month === settlementMonth ? actual : null;
+      } else {
+        // 결산 마감월 초과: 예상 집행 금액 계산
+        // 각 월의 예산 × 집행률
+        actual = null;
+        projected = budget * executionRate;
+      }
+      
+      return {
+        month: `${month}월`,
+        budget,
+        actual,
+        projected,
+      };
+    });
+  }, [budgetData, settlementMonth, executionRate]);
+
+  // 도넛 차트 데이터 (메모이제이션)
+  const donutData = useMemo(
+    () => [
+      { name: "실제 집행", value: stats.filteredTotalActual, color: "hsl(142, 71%, 45%)" },
+      { name: "잔여 예산", value: stats.remainingBudget, color: "hsl(217, 91%, 50%)" },
+    ],
+    [stats.filteredTotalActual, stats.remainingBudget]
+  );
+
+  const handleSettlementMonthChange = (value: string) => {
+    const month = parseInt(value, 10);
+    setSettlementMonth(month);
+    localStorage.setItem("settlementMonth", value);
+    // 예산 데이터 쿼리 무효화하여 재조회
+    queryClient.invalidateQueries({ queryKey: ["/api/budget"] });
   };
-
-  const queryString = buildQueryString();
-  const queryKey = ["/api/budget", queryString];
-
-  const { data: budgetData = [], isLoading, isRefetching, refetch } = useQuery<BudgetTableEntry[]>({
-    queryKey,
-    queryFn: async () => {
-      const url = queryString ? `/api/budget?${queryString}` : "/api/budget";
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Failed to fetch budget data");
-      return response.json();
-    },
-  });
-
-  const handleRefresh = () => {
-    refetch();
-  };
-
-  // Calculate statistics
-  const settledData = budgetData.filter(item => item.month <= SETTLEMENT_MONTH);
-  const totalBudget = budgetData.reduce((sum, item) => sum + item.budgetAmount, 0);
-  const settledBudget = settledData.reduce((sum, item) => sum + item.budgetAmount, 0);
-  const totalActual = budgetData.reduce((sum, item) => sum + item.actualAmount, 0);
-  const executionRate = settledBudget > 0 ? (totalActual / settledBudget) * 100 : 0;
-  const monthsElapsed = SETTLEMENT_MONTH;
-  const projectedAnnual = monthsElapsed > 0 ? (totalActual / monthsElapsed) * 12 : 0;
-  const remainingBudget = totalBudget - totalActual;
-
-  const formatCurrency = (value: number) => {
-    if (value >= 1000000000) return `₩${(value / 1000000000).toFixed(1)}B`;
-    if (value >= 1000000) return `₩${(value / 1000000).toFixed(0)}M`;
-    return `₩${(value / 1000).toFixed(0)}K`;
-  };
-
-  // Department chart data
-  const departmentData = Array.from(
-    budgetData.reduce((acc, entry) => {
-      const existing = acc.get(entry.department) || { budget: 0, actual: 0 };
-      acc.set(entry.department, {
-        budget: existing.budget + entry.budgetAmount,
-        actual: existing.actual + entry.actualAmount,
-      });
-      return acc;
-    }, new Map<string, { budget: number; actual: number }>())
-  ).map(([department, values]) => ({
-    department,
-    budget: values.budget,
-    actual: values.actual,
-    executionRate: values.budget > 0 ? (values.actual / values.budget) * 100 : 0,
-  }));
-
-  // Monthly execution rate data
-  const monthlyData = Array.from({ length: 12 }, (_, i) => {
-    const month = i + 1;
-    const monthData = budgetData.filter(entry => entry.month <= month && entry.month <= SETTLEMENT_MONTH);
-    const monthBudgetData = budgetData.filter(entry => entry.month <= Math.min(month, SETTLEMENT_MONTH));
-    const monthBudget = monthBudgetData.reduce((sum, item) => sum + item.budgetAmount, 0);
-    const monthActual = monthData.reduce((sum, item) => sum + item.actualAmount, 0);
-    return {
-      month: `${month}월`,
-      executionRate: month <= SETTLEMENT_MONTH ? (monthBudget > 0 ? (monthActual / monthBudget) * 100 : 0) : null,
-      targetRate: (month / 12) * 100,
-      isProjected: month > SETTLEMENT_MONTH,
-    };
-  });
-
-  // Donut chart data
-  const donutData = [
-    { name: "실제 집행", value: totalActual, color: "hsl(142, 71%, 45%)" },
-    { name: "잔여 예산", value: remainingBudget, color: "hsl(217, 91%, 50%)" },
-  ];
 
   const showSuccessMessage = (type: string) => {
     setDownloadType(type);
@@ -122,7 +136,7 @@ export default function Dashboard({ filters }: DashboardProps) {
       URL.revokeObjectURL(url);
       showSuccessMessage("CSV");
     } catch (error) {
-      console.error("Failed to download CSV:", error);
+      logger.error("Failed to download CSV:", error);
     }
   };
 
@@ -138,11 +152,11 @@ export default function Dashboard({ filters }: DashboardProps) {
       URL.revokeObjectURL(url);
       showSuccessMessage("JSON");
     } catch (error) {
-      console.error("Failed to download JSON:", error);
+      logger.error("Failed to download JSON:", error);
     }
   };
 
-  const handleDownloadTemplate = async () => {
+  const handleDownloadTemplate = useCallback(async () => {
     try {
       const response = await fetch("/api/budget/template/csv");
       const blob = await response.blob();
@@ -154,16 +168,20 @@ export default function Dashboard({ filters }: DashboardProps) {
       URL.revokeObjectURL(url);
       showSuccessMessage("템플릿");
     } catch (error) {
-      console.error("Failed to download template:", error);
+      logger.error("Failed to download template:", error);
     }
   };
 
   const handleTableDownloadCSV = () => {
-    // Download filtered data as CSV
-    const headers = ["부서", "계정과목", "월", "연도", "예산", "실제", "집행률"];
+    const headers = ["부서", "계정과목", "예산 내/외", "사업구분", "프로젝트명", "산정근거/집행내역", "고정비/변동비", "월", "연도", "예산", "실제", "집행률"];
     const csvData = budgetData.map(entry => [
       entry.department,
       entry.accountCategory,
+      entry.isWithinBudget ? "예산 내" : "예산 외",
+      entry.businessDivision,
+      entry.projectName,
+      entry.calculationBasis,
+      entry.costType,
       entry.month,
       entry.year,
       entry.budgetAmount,
@@ -184,10 +202,52 @@ export default function Dashboard({ filters }: DashboardProps) {
     showSuccessMessage("필터링된 CSV");
   };
 
+  const handleImport = async (entries: Array<{
+    department: string;
+    accountCategory: string;
+    month: number;
+    year: number;
+    budgetAmount: number;
+    actualAmount: number;
+    isWithinBudget?: boolean;
+    businessDivision?: string;
+    projectName: string;
+    calculationBasis?: string;
+    costType?: string;
+  }>) => {
+    const response = await fetch("/api/budget/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries }),
+    });
+    
+    if (!response.ok) {
+      throw new Error("Failed to import entries");
+    }
+    
+    await queryClient.invalidateQueries({ queryKey: ["/api/budget"] });
+  };
+
   if (isLoading) {
+    return <DashboardSkeleton />;
+  }
+
+  if (isError) {
     return (
-      <div className="flex items-center justify-center h-full min-h-[400px]">
-        <LoadingSpinner size="lg" text="데이터를 불러오는 중..." />
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+            예산 및 결산 대시보드
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            데이터를 불러오는 중 오류가 발생했습니다
+          </p>
+        </div>
+        <ErrorDisplay
+          title="데이터 로딩 실패"
+          message={error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다."}
+          onRetry={() => refetch()}
+        />
       </div>
     );
   }
@@ -200,15 +260,27 @@ export default function Dashboard({ filters }: DashboardProps) {
             예산 및 결산 대시보드
           </h1>
           <p className="text-muted-foreground mt-1">
-            {filters ? `${filters.year}년 ${filters.startMonth}월 ~ ${filters.endMonth}월` : "2025년 1월 ~ 12월"} | 결산 마감: {SETTLEMENT_MONTH}월
+            {filters ? `${filters.year}년 ${filters.startMonth}월 ~ ${filters.endMonth}월` : "2025년 1월 ~ 12월"} | 결산 마감: {settlementMonth}월
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Select value={settlementMonth.toString()} onValueChange={handleSettlementMonthChange}>
+            <SelectTrigger className="w-[140px] min-h-[44px]">
+              <SelectValue placeholder="결산 마감월" />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: MONTHS_PER_YEAR }, (_, i) => i + 1).map((month) => (
+                <SelectItem key={month} value={month.toString()}>
+                  {month}월
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <ImportPreviewDialog onImport={handleImport} />
           <Button 
             variant="outline" 
             onClick={handleDownloadTemplate}
             className="gap-2 min-h-[44px]"
-            data-testid="button-download-template"
           >
             <FileDown className="h-4 w-4" />
             <span className="hidden sm:inline">템플릿</span>
@@ -217,17 +289,15 @@ export default function Dashboard({ filters }: DashboardProps) {
             variant="outline" 
             onClick={handleDownloadJSON}
             className="gap-2 min-h-[44px]"
-            data-testid="button-download-json"
           >
             <FileJson className="h-4 w-4" />
             <span className="hidden sm:inline">JSON</span>
           </Button>
           <Button 
             variant="outline" 
-            onClick={handleRefresh}
+            onClick={() => refetch()}
             disabled={isRefetching}
             className="gap-2 min-h-[44px]"
-            data-testid="button-refresh"
           >
             <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">{isRefetching ? "갱신 중..." : "새로고침"}</span>
@@ -246,47 +316,90 @@ export default function Dashboard({ filters }: DashboardProps) {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
         <KPICard
           title="총 예산"
-          value={formatCurrency(totalBudget)}
+          value={formatShortCurrency(stats.annualTotalBudget)}
           subtitle="연간 전체"
           icon={DollarSign}
           trend="neutral"
           colorScheme="blue"
+          tooltip={`1월부터 12월까지의 모든 예산 금액을 합산한 값입니다.
+
+필터와 무관하게 전체 연간 예산을 표시합니다.
+
+결산 마감월(${settlementMonth}월) 기준의 예산: ${formatShortCurrency(stats.settledBudget)}`}
         />
         <KPICard
           title="집행률"
-          value={`${executionRate.toFixed(1)}%`}
-          subtitle={`${monthsElapsed}개월 기준`}
+          value={`${stats.executionRate.toFixed(1)}%`}
+          subtitle={`${settlementMonth}개월 기준
+예산: ${formatShortCurrency(stats.settledBudget)} | 집행: ${formatShortCurrency(settledActual)}`}
           icon={Percent}
-          trend={executionRate > 75 ? "up" : executionRate > 60 ? "neutral" : "down"}
-          trendValue={executionRate > 75 ? "높음" : executionRate > 60 ? "보통" : "낮음"}
+          trend={stats.executionRate > 75 ? "up" : stats.executionRate > 60 ? "neutral" : "down"}
+          trendValue={stats.executionRate > 75 ? "높음" : stats.executionRate > 60 ? "보통" : "낮음"}
           colorScheme="green"
+          tooltip={`결산 마감월(${settlementMonth}월)까지의 실제 집행 금액을 해당 기간의 예산으로 나눈 비율입니다.
+
+계산식: (실제 집행 금액 ÷ 결산 마감월 기준의 예산) × 100
+
+결산 마감월 기준의 예산: ${formatShortCurrency(stats.settledBudget)}
+결산 마감월까지의 실제 집행: ${formatShortCurrency(settledActual)}
+
+필터가 적용된 데이터에서 ${settlementMonth}월까지의 데이터만 사용됩니다.`}
         />
         <KPICard
           title="연간 예상"
-          value={formatCurrency(projectedAnnual)}
+          value={formatShortCurrency(stats.projectedAnnual)}
           subtitle="현재 집행률 기준"
           icon={TrendingUp}
-          trend={projectedAnnual < totalBudget ? "down" : "up"}
-          trendValue={projectedAnnual < totalBudget ? "예산 내" : "초과 예상"}
+          trend={stats.projectedAnnual < stats.annualTotalBudget ? "down" : "up"}
+          trendValue={stats.projectedAnnual < stats.annualTotalBudget ? "예산 내" : "초과 예상"}
           colorScheme="orange"
+          tooltip={`결산 마감월까지의 누적 집행률을 기준으로 계산한 연간 예상 금액입니다.
+
+계산식: 결산 마감월까지의 실제 집행 금액 + (결산 마감월 이후 월들의 예산 × 집행률)
+
+집행률 = 결산 마감월까지의 실제 집행 ÷ 결산 마감월 기준의 예산
+
+결산 마감월 기준의 예산: 필터된 데이터에서 ${settlementMonth}월까지의 예산 합계
+
+예: 9월까지 예산 10억원, 실제 집행 6억원(집행률 60%)
+→ 10~12월 예산 3억원 × 60% = 1.8억원
+→ 연간 예상 = 6억원 + 1.8억원 = 7.8억원`}
         />
         <KPICard
           title="잔여 예산"
-          value={formatCurrency(remainingBudget)}
+          value={formatShortCurrency(stats.remainingBudget)}
           subtitle="미집행 금액"
           icon={Target}
           trend="neutral"
           colorScheme="purple"
+          tooltip={`총 예산에서 필터 기준의 실제 집행 금액을 뺀 남은 예산입니다.
+
+계산식: 총 예산 - 필터 기준의 실제 집행 금액
+
+총 예산: 전체 연간 예산 (필터 무관)
+필터 기준의 실제 집행: 필터가 적용된 데이터의 실제 집행 누적`}
         />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
         <DepartmentBarChart data={departmentData} />
-        <ExecutionRateLineChart data={monthlyData} settlementMonth={SETTLEMENT_MONTH} />
+        <ExecutionRateLineChart 
+          data={monthlyData} 
+          budgetData={monthlyBudgetData}
+          settlementMonth={settlementMonth} 
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:gap-6">
-        <BudgetDonutChart data={donutData} />
+        <BudgetDonutChart 
+          data={donutData}
+          totalBudget={stats.filteredTotalBudget}
+          totalActual={stats.filteredTotalActual}
+          executionRate={stats.executionRate}
+          departmentData={departmentData}
+          accountData={accountData}
+          settlementMonth={settlementMonth}
+        />
       </div>
 
       <BudgetDataTable 

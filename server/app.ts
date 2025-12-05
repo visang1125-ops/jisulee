@@ -27,12 +27,24 @@ declare module 'http' {
     rawBody: unknown
   }
 }
+
+// 요청 타임아웃 설정 (30초)
+app.use((req, res, next) => {
+  req.setTimeout(30000, () => {
+    if (!res.headersSent) {
+      res.status(408).json({ message: "Request timeout" });
+    }
+  });
+  next();
+});
+
 app.use(express.json({
   verify: (req, _res, buf) => {
     req.rawBody = buf;
-  }
+  },
+  limit: '10mb', // JSON 페이로드 크기 제한
 }));
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -67,14 +79,25 @@ app.use((req, res, next) => {
 export default async function runApp(
   setup: (app: Express, server: Server) => Promise<void>,
 ) {
+  // 헬스체크 엔드포인트 추가
+  app.get("/health", (_req, res) => {
+    res.status(200).json({ 
+      status: "ok", 
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    });
+  });
+  
   const server = await registerRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    const error = err as { status?: number; statusCode?: number; message?: string };
+    const status = error.status || error.statusCode || 500;
+    const message = error.message || "Internal Server Error";
 
+    log(`Error ${status}: ${message}`, "error");
     res.status(status).json({ message });
-    throw err;
+    // 에러를 다시 던지지 않음 - 서버 크래시 방지
   });
 
   // importantly run the final setup after setting up all the other routes so
@@ -86,11 +109,19 @@ export default async function runApp(
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      log(`Port ${port} is already in use. Please use a different port or stop the other process.`, "error");
+    } else {
+      log(`Server error: ${error.message}`, "error");
+    }
+    // 에러 발생 시에도 프로세스가 종료되지 않도록 함
+  });
+  
+  server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });
+  
+  return server;
 }

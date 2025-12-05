@@ -1,27 +1,12 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage, type BudgetFilter } from "./storage";
 import { z } from "zod";
-import type { Department, AccountCategory } from "@shared/schema";
+import type { Department, AccountCategory, BusinessDivision, CostType } from "@shared/schema";
+import { DEPARTMENTS, ACCOUNT_CATEGORIES, BUSINESS_DIVISIONS, COST_TYPES, SETTLEMENT_MONTH } from "@shared/constants";
 import { getAuthenticatedUser, listRepositories, createRepository, getRepository } from "./github";
-
-const DEPARTMENTS: Department[] = [
-  "DX전략 Core Group",
-  "서비스혁신 Core",
-  "플랫폼혁신 Core",
-  "백오피스혁신 Core",
-];
-
-const ACCOUNT_CATEGORIES: AccountCategory[] = [
-  "광고선전비(이벤트)",
-  "통신비",
-  "지급수수료",
-  "지급수수료(은행수수료)",
-  "지급수수료(외부용역,자문료)",
-  "지급수수료(유지보수료)",
-  "지급수수료(저작료)",
-  "지급수수료(제휴)",
-];
+import { handleError, NotFoundError, ValidationError, InternalServerError } from "./errors";
+import { log } from "./app";
 
 const budgetFilterSchema = z.object({
   startMonth: z.coerce.number().min(1).max(12).optional(),
@@ -38,11 +23,17 @@ const budgetEntrySchema = z.object({
   year: z.number(),
   budgetAmount: z.number().min(0),
   actualAmount: z.number().min(0),
+  // 새로운 필드들
+  isWithinBudget: z.boolean().default(true),
+  businessDivision: z.enum(BUSINESS_DIVISIONS as [string, ...string[]]),
+  projectName: z.string().min(1, "프로젝트명은 필수입니다"),
+  calculationBasis: z.string().min(1, "산정근거/집행내역은 필수입니다"),
+  costType: z.enum(COST_TYPES as [string, ...string[]]),
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Get all budget entries with optional filtering
-  app.get("/api/budget", async (req, res) => {
+  app.get("/api/budget", async (req: Request, res: Response) => {
     try {
       const query = req.query;
       
@@ -71,31 +62,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const entries = await storage.getBudgetEntries(filters);
+      log(`Fetched ${entries.length} budget entries`);
       res.json(entries);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch budget entries" });
+      handleError(error, res);
     }
   });
 
   // Get single budget entry
-  app.get("/api/budget/:id", async (req, res) => {
+  app.get("/api/budget/:id", async (req: Request, res: Response) => {
     try {
       const entry = await storage.getBudgetEntry(req.params.id);
       if (!entry) {
-        return res.status(404).json({ error: "Budget entry not found" });
+        throw new NotFoundError("Budget entry", req.params.id);
       }
       res.json(entry);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch budget entry" });
+      handleError(error, res);
     }
   });
 
   // Create budget entry
-  app.post("/api/budget", async (req, res) => {
+  app.post("/api/budget", async (req: Request, res: Response) => {
     try {
       const result = budgetEntrySchema.safeParse(req.body);
       if (!result.success) {
-        return res.status(400).json({ error: "Invalid budget entry data", details: result.error.issues });
+        throw new ValidationError("Invalid budget entry data", result.error.issues);
       }
 
       const data = result.data;
@@ -104,21 +96,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...data,
         department: data.department as Department,
         accountCategory: data.accountCategory as AccountCategory,
+        businessDivision: data.businessDivision as BusinessDivision,
+        costType: data.costType as CostType,
         executionRate: 0, // Will be recalculated by storage
       });
+      log(`Created budget entry: ${entry.id}`);
       res.status(201).json(entry);
     } catch (error) {
-      res.status(500).json({ error: "Failed to create budget entry" });
+      handleError(error, res);
     }
   });
 
   // Update budget entry
-  app.patch("/api/budget/:id", async (req, res) => {
+  app.patch("/api/budget/:id", async (req: Request, res: Response) => {
     try {
       const partialSchema = budgetEntrySchema.partial();
       const result = partialSchema.safeParse(req.body);
       if (!result.success) {
-        return res.status(400).json({ error: "Invalid budget entry data", details: result.error.issues });
+        throw new ValidationError("Invalid budget entry data", result.error.issues);
       }
 
       const data = result.data;
@@ -140,32 +135,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const entry = await storage.updateBudgetEntry(req.params.id, updateData);
       if (!entry) {
-        return res.status(404).json({ error: "Budget entry not found" });
+        throw new NotFoundError("Budget entry", req.params.id);
       }
+      log(`Updated budget entry: ${req.params.id}`);
       res.json(entry);
     } catch (error) {
-      res.status(500).json({ error: "Failed to update budget entry" });
+      handleError(error, res);
     }
   });
 
   // Delete budget entry
-  app.delete("/api/budget/:id", async (req, res) => {
+  app.delete("/api/budget/:id", async (req: Request, res: Response) => {
     try {
       const success = await storage.deleteBudgetEntry(req.params.id);
       if (!success) {
-        return res.status(404).json({ error: "Budget entry not found" });
+        throw new NotFoundError("Budget entry", req.params.id);
       }
+      log(`Deleted budget entry: ${req.params.id}`);
       res.status(204).send();
     } catch (error) {
-      res.status(500).json({ error: "Failed to delete budget entry" });
+      handleError(error, res);
+    }
+  });
+
+  // Bulk import budget entries
+  app.post("/api/budget/import", async (req: Request, res: Response) => {
+    try {
+      const entriesSchema = z.array(z.object({
+        department: z.enum(DEPARTMENTS as [string, ...string[]]),
+        accountCategory: z.enum(ACCOUNT_CATEGORIES as [string, ...string[]]),
+        description: z.string().min(1, "적요는 필수입니다"),
+        month: z.number().min(1).max(12),
+        year: z.number(),
+        budgetAmount: z.number().min(0),
+        actualAmount: z.number().min(0),
+        // 새로운 필드들 (선택적)
+        isWithinBudget: z.boolean().default(true).optional(),
+        businessDivision: z.enum(BUSINESS_DIVISIONS as [string, ...string[]]).default("전체").optional(),
+        projectName: z.string().default("").optional(),
+        calculationBasis: z.string().default("").optional(),
+        costType: z.enum(COST_TYPES as [string, ...string[]]).default("변동비").optional(),
+      }));
+
+      const result = entriesSchema.safeParse(req.body.entries);
+      if (!result.success) {
+        throw new ValidationError("Invalid budget entries data", result.error.issues);
+      }
+
+      const entriesToCreate = result.data.map(entry => ({
+        ...entry,
+        department: entry.department as Department,
+        accountCategory: entry.accountCategory as AccountCategory,
+        businessDivision: (entry.businessDivision || "전체") as BusinessDivision,
+        costType: (entry.costType || "변동비") as CostType,
+        isWithinBudget: entry.isWithinBudget ?? true,
+        projectName: entry.projectName || entry.description,
+        calculationBasis: entry.calculationBasis || entry.description,
+        executionRate: 0,
+      }));
+
+      const createdEntries = await storage.createBudgetEntries(entriesToCreate);
+      log(`Imported ${createdEntries.length} budget entries`);
+      res.status(201).json({ 
+        success: true, 
+        count: createdEntries.length,
+        entries: createdEntries 
+      });
+    } catch (error) {
+      handleError(error, res);
     }
   });
 
   // Get summary statistics
-  app.get("/api/budget/summary/stats", async (req, res) => {
+  app.get("/api/budget/summary/stats", async (req: Request, res: Response) => {
     try {
       const entries = await storage.getAllBudgetEntries();
-      const settlementMonth = 9;
+      const settlementMonth = SETTLEMENT_MONTH;
       
       const settledEntries = entries.filter(e => e.month <= settlementMonth);
       
@@ -185,40 +230,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
         settlementMonth,
       });
     } catch (error) {
-      res.status(500).json({ error: "Failed to calculate summary" });
+      handleError(error, res);
     }
   });
 
   // Export all data as JSON
-  app.get("/api/budget/export/json", async (req, res) => {
+  app.get("/api/budget/export/json", async (req: Request, res: Response) => {
     try {
       const entries = await storage.getAllBudgetEntries();
+      log(`Exported ${entries.length} entries as JSON`);
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', `attachment; filename=budget_data_${new Date().toISOString().split('T')[0]}.json`);
       res.json({
         exportDate: new Date().toISOString(),
-        settlementMonth: 9,
+        settlementMonth: SETTLEMENT_MONTH,
         departments: DEPARTMENTS,
         accountCategories: ACCOUNT_CATEGORIES,
         data: entries,
       });
     } catch (error) {
-      res.status(500).json({ error: "Failed to export data" });
+      handleError(error, res);
+    }
+  });
+
+  // Clear all budget entries
+  app.delete("/api/budget/clear", async (req: Request, res: Response) => {
+    try {
+      await storage.clearAllBudgetEntries();
+      log("All budget entries cleared");
+      res.json({ success: true, message: "모든 예산 데이터가 삭제되었습니다." });
+    } catch (error) {
+      handleError(error, res);
+    }
+  });
+
+  // Reload data from Excel file
+  app.post("/api/budget/reload-from-excel", async (req: Request, res: Response) => {
+    try {
+      const filePath = req.body.filePath; // 선택적: 특정 파일 경로
+      const count = await storage.reloadFromExcel(filePath);
+      log(`Reloaded ${count} entries from Excel`);
+      res.json({ 
+        success: true, 
+        count,
+        message: `엑셀 파일에서 ${count}개의 항목을 로드했습니다.` 
+      });
+    } catch (error) {
+      handleError(error, res);
     }
   });
 
   // Export as CSV
-  app.get("/api/budget/export/csv", async (req, res) => {
+  app.get("/api/budget/export/csv", async (req: Request, res: Response) => {
     try {
       const entries = await storage.getAllBudgetEntries();
       
-      const headers = ["ID", "부서", "계정과목", "월", "연도", "예산", "실제", "집행률"];
+      const headers = ["ID", "부서", "계정과목", "적요", "월", "연도", "예산", "실제", "집행률"];
       const csvRows = [
         headers.join(","),
         ...entries.map(e => [
           e.id,
           `"${e.department}"`,
           `"${e.accountCategory}"`,
+          `"${e.description}"`,
           e.month,
           e.year,
           e.budgetAmount,
@@ -229,21 +303,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const csvContent = "\uFEFF" + csvRows.join("\n");
       
+      log(`Exported ${entries.length} entries as CSV`);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename=budget_data_${new Date().toISOString().split('T')[0]}.csv`);
       res.send(csvContent);
     } catch (error) {
-      res.status(500).json({ error: "Failed to export CSV" });
+      handleError(error, res);
     }
   });
 
   // Get template CSV for data import
-  app.get("/api/budget/template/csv", async (req, res) => {
+  app.get("/api/budget/template/csv", async (req: Request, res: Response) => {
     try {
-      const headers = ["부서", "계정과목", "월", "연도", "예산", "실제"];
+      const headers = ["부서", "계정과목", "적요", "월", "연도", "예산", "실제"];
       const exampleRows = [
-        [`"${DEPARTMENTS[0]}"`, `"${ACCOUNT_CATEGORIES[0]}"`, "1", "2025", "10000000", "8000000"],
-        [`"${DEPARTMENTS[1]}"`, `"${ACCOUNT_CATEGORIES[1]}"`, "2", "2025", "15000000", "12000000"],
+        [`"${DEPARTMENTS[0]}"`, `"${ACCOUNT_CATEGORIES[0]}"`, `"온라인 광고비"`, "1", "2025", "10000000", "8000000"],
+        [`"${DEPARTMENTS[1]}"`, `"${ACCOUNT_CATEGORIES[1]}"`, `"인터넷 회선비"`, "2", "2025", "15000000", "12000000"],
       ];
       
       const csvContent = "\uFEFF" + [headers.join(","), ...exampleRows.map(r => r.join(","))].join("\n");
@@ -252,7 +327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Content-Disposition', 'attachment; filename=budget_template.csv');
       res.send(csvContent);
     } catch (error) {
-      res.status(500).json({ error: "Failed to generate template" });
+      handleError(error, res);
     }
   });
 
@@ -261,8 +336,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = await getAuthenticatedUser();
       res.json({ login: user.login, name: user.name, avatar_url: user.avatar_url });
-    } catch (error: any) {
-      res.status(500).json({ error: "Failed to get GitHub user", message: error.message });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      handleError(error, res);
     }
   });
 
@@ -270,8 +346,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const repos = await listRepositories();
       res.json(repos.map(r => ({ name: r.name, full_name: r.full_name, html_url: r.html_url, private: r.private })));
-    } catch (error: any) {
-      res.status(500).json({ error: "Failed to list repositories", message: error.message });
+    } catch (error) {
+      handleError(error, res);
     }
   });
 
@@ -283,8 +359,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const repo = await createRepository(name, description || "", isPrivate || false);
       res.status(201).json({ name: repo.name, full_name: repo.full_name, html_url: repo.html_url, clone_url: repo.clone_url });
-    } catch (error: any) {
-      res.status(500).json({ error: "Failed to create repository", message: error.message });
+    } catch (error) {
+      handleError(error, res);
     }
   });
 

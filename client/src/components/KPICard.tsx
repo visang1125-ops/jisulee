@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LucideIcon, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 interface KPICardProps {
@@ -9,6 +10,7 @@ interface KPICardProps {
   trend?: "up" | "down" | "neutral";
   trendValue?: string;
   colorScheme?: "blue" | "green" | "orange" | "purple";
+  tooltip?: string;
 }
 
 export default function KPICard({
@@ -19,6 +21,7 @@ export default function KPICard({
   trend = "neutral",
   trendValue,
   colorScheme = "blue",
+  tooltip,
 }: KPICardProps) {
   const colorClasses = {
     blue: "bg-gradient-to-br from-blue-500 to-blue-600 shadow-blue-500/25",
@@ -30,7 +33,7 @@ export default function KPICard({
   const TrendIcon = trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : Minus;
   const trendColorClass = trend === "up" ? "text-green-600 dark:text-green-400" : trend === "down" ? "text-red-600 dark:text-red-400" : "text-muted-foreground";
 
-  return (
+  const cardContent = (
     <Card className="overflow-visible shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl group" data-testid={`card-kpi-${title.toLowerCase().replace(/\s+/g, '-')}`}>
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
@@ -54,11 +57,26 @@ export default function KPICard({
               </div>
             )}
             {subtitle && (
-              <p className="text-muted-foreground">{subtitle}</p>
+              <p className="text-muted-foreground whitespace-pre-line">{subtitle}</p>
             )}
           </div>
         )}
       </CardContent>
     </Card>
   );
+
+  if (tooltip) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {cardContent}
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs">
+          <p className="text-sm whitespace-pre-line" style={{ wordBreak: "keep-all" }}>{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return cardContent;
 }

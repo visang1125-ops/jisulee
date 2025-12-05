@@ -1,0 +1,28 @@
+/**
+ * API 관련 상수
+ */
+export const API_CONSTANTS = {
+  // 재시도 설정
+  RETRY_COUNT: 1,
+  RETRY_DELAY_MS: 1000,
+  
+  // 타임아웃 설정
+  REQUEST_TIMEOUT_MS: 30000,
+  
+  // 페이지네이션
+  DEFAULT_PAGE_SIZE: 10,
+  MAX_PAGE_SIZE: 1000,
+  
+  // 검증 범위
+  MIN_YEAR: 2020,
+  MAX_YEAR: 2030,
+  MIN_MONTH: 1,
+  MAX_MONTH: 12,
+  
+  // 금액 검증
+  MIN_AMOUNT: 0,
+  
+  // UI 딜레이
+  DOWNLOAD_DELAY_MS: 500, // 다운로드 시뮬레이션 딜레이
+} as const;
+

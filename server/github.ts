@@ -1,10 +1,17 @@
 // GitHub Integration - uses Replit's GitHub connector
 import { Octokit } from '@octokit/rest';
 
-let connectionSettings: any;
+interface ConnectionSettings {
+  settings: {
+    access_token: string;
+    expires_at?: string;
+  };
+}
+
+let connectionSettings: ConnectionSettings | null = null;
 
 async function getAccessToken() {
-  if (connectionSettings && connectionSettings.settings.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
+  if (connectionSettings?.settings.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
     return connectionSettings.settings.access_token;
   }
   
@@ -75,8 +82,9 @@ export async function getRepository(owner: string, repo: string) {
   try {
     const { data } = await octokit.repos.get({ owner, repo });
     return data;
-  } catch (error: any) {
-    if (error.status === 404) {
+  } catch (error) {
+    const err = error as { status?: number };
+    if (err.status === 404) {
       return null;
     }
     throw error;

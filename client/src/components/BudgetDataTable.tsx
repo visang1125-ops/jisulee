@@ -1,78 +1,78 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Download, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Loader2 } from "lucide-react";
+import { Download, ChevronLeft, ChevronRight, Loader2, Search, X } from "lucide-react";
+import { formatCurrency, getExecutionRateColor, shortenDepartmentName } from "@/lib/utils";
+import type { BudgetEntry } from "@/hooks/useBudgetData";
+import type { SortField } from "@/lib/types";
+import { useTableSort } from "@/hooks/useTableSort";
+import { usePagination } from "@/hooks/usePagination";
+import SortIcon from "@/components/SortIcon";
+import { API_CONSTANTS } from "@/lib/constants-api";
 
-export interface BudgetTableEntry {
-  id: string;
-  department: string;
-  accountCategory: string;
-  month: number;
-  year: number;
-  budgetAmount: number;
-  actualAmount: number;
-  executionRate: number;
-}
+export type BudgetTableEntry = BudgetEntry;
 
 interface BudgetDataTableProps {
   data: BudgetTableEntry[];
   onDownloadCSV?: () => void;
 }
 
-type SortField = "department" | "accountCategory" | "month" | "budgetAmount" | "actualAmount" | "executionRate";
-type SortDirection = "asc" | "desc" | null;
-
 export default function BudgetDataTable({ data, onDownloadCSV }: BudgetDataTableProps) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [sortField, setSortField] = useState<SortField | null>(null);
-  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-  const itemsPerPage = 10;
+  const [searchQuery, setSearchQuery] = useState("");
+  const itemsPerPage = API_CONSTANTS.DEFAULT_PAGE_SIZE;
+  
+  const { sortField, sortDirection, handleSort } = useTableSort();
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      if (sortDirection === "asc") setSortDirection("desc");
-      else if (sortDirection === "desc") {
-        setSortDirection(null);
-        setSortField(null);
-      }
-    } else {
-      setSortField(field);
-      setSortDirection("asc");
-    }
-  };
+  // 검색 필터링
+  const filteredData = useMemo(() => {
+    if (!searchQuery.trim()) return data;
+    const query = searchQuery.toLowerCase().trim();
+    return data.filter(entry => 
+      entry.department.toLowerCase().includes(query) ||
+      entry.accountCategory.toLowerCase().includes(query) ||
+      entry.projectName.toLowerCase().includes(query) ||
+      entry.calculationBasis.toLowerCase().includes(query) ||
+      entry.businessDivision.toLowerCase().includes(query) ||
+      entry.costType.toLowerCase().includes(query) ||
+      (entry.isWithinBudget ? "예산내" : "예산외").includes(query) ||
+      entry.month.toString().includes(query) ||
+      entry.year.toString().includes(query) ||
+      formatCurrency(entry.budgetAmount).toLowerCase().includes(query) ||
+      formatCurrency(entry.actualAmount).toLowerCase().includes(query) ||
+      entry.executionRate.toFixed(1).includes(query)
+    );
+  }, [data, searchQuery]);
 
-  const sortedData = [...data].sort((a, b) => {
-    if (!sortField || !sortDirection) return 0;
-    const aValue = a[sortField];
-    const bValue = b[sortField];
-    const modifier = sortDirection === "asc" ? 1 : -1;
-    if (aValue < bValue) return -1 * modifier;
-    if (aValue > bValue) return 1 * modifier;
-    return 0;
-  });
+  // 정렬 (메모이제이션)
+  const sortedData = useMemo(() => {
+    if (!sortField || !sortDirection) return filteredData;
+    return [...filteredData].sort((a, b) => {
+      const aValue = a[sortField as keyof BudgetEntry];
+      const bValue = b[sortField as keyof BudgetEntry];
+      const modifier = sortDirection === "asc" ? 1 : -1;
+      if (aValue < bValue) return -1 * modifier;
+      if (aValue > bValue) return 1 * modifier;
+      return 0;
+    });
+  }, [filteredData, sortField, sortDirection]);
 
-  const totalPages = Math.ceil(sortedData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = sortedData.slice(startIndex, startIndex + itemsPerPage);
+  // 페이지네이션
+  const { currentPage, totalPages, startIndex, paginatedData, setCurrentPage } = usePagination(sortedData, itemsPerPage);
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(value);
-  };
+  // 검색어 변경 시 첫 페이지로 (useCallback으로 최적화)
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  }, [setCurrentPage]);
 
   const getExecutionRateBadge = (rate: number) => {
-    if (rate >= 80) return <Badge className="bg-red-500 hover:bg-red-600 text-white text-xs">{rate.toFixed(1)}%</Badge>;
-    if (rate >= 60) return <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-xs">{rate.toFixed(1)}%</Badge>;
-    return <Badge className="bg-green-500 hover:bg-green-600 text-white text-xs">{rate.toFixed(1)}%</Badge>;
+    return <Badge className={`${getExecutionRateColor(rate)} hover:opacity-90 text-white text-xs`}>{rate.toFixed(1)}%</Badge>;
   };
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ArrowUpDown className="h-4 w-4" />;
-    if (sortDirection === "asc") return <ArrowUp className="h-4 w-4" />;
-    return <ArrowDown className="h-4 w-4" />;
-  };
 
   const handleDownload = async () => {
     setIsDownloading(true);
@@ -84,25 +84,58 @@ export default function BudgetDataTable({ data, onDownloadCSV }: BudgetDataTable
   return (
     <Card className="shadow-lg" data-testid="card-budget-table">
       <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-card-foreground/5 to-transparent rounded-t-lg" />
-      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 space-y-0">
-        <div>
-          <CardTitle className="text-lg font-semibold">지출 내역</CardTitle>
-          <CardDescription>부서별 계정과목 지출 상세</CardDescription>
+      <CardHeader className="flex flex-col gap-4 space-y-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-lg font-semibold">지출 내역</CardTitle>
+            <CardDescription>부서별 계정과목 지출 상세</CardDescription>
+          </div>
+          <Button 
+            variant="outline" 
+            onClick={handleDownload}
+            disabled={isDownloading}
+            className="gap-2 min-h-[44px] self-start sm:self-auto"
+            data-testid="button-download-csv"
+          >
+            {isDownloading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {isDownloading ? "다운로드 중..." : "CSV 다운로드"}
+          </Button>
         </div>
-        <Button 
-          variant="outline" 
-          onClick={handleDownload}
-          disabled={isDownloading}
-          className="gap-2 min-h-[44px] self-start sm:self-auto"
-          data-testid="button-download-csv"
-        >
-          {isDownloading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4" />
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="부서, 계정과목, 산정근거/집행내역, 월, 금액 등으로 검색..."
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="pl-10 pr-10 min-h-[44px]"
+            aria-label="테이블 검색"
+            aria-describedby="search-description"
+          />
+          <span id="search-description" className="sr-only">
+            테이블의 부서, 계정과목, 산정근거/집행내역, 월, 금액 등으로 검색할 수 있습니다
+          </span>
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleSearchChange("")}
+              className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8"
+              aria-label="검색어 지우기"
+            >
+              <X className="h-4 w-4" />
+            </Button>
           )}
-          {isDownloading ? "다운로드 중..." : "CSV 다운로드"}
-        </Button>
+        </div>
+        {searchQuery && (
+          <div className="text-sm text-muted-foreground" role="status" aria-live="polite">
+            {filteredData.length}개 항목 검색됨 (전체 {data.length}개)
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         <div className="rounded-md border overflow-x-auto">
@@ -116,9 +149,10 @@ export default function BudgetDataTable({ data, onDownloadCSV }: BudgetDataTable
                     onClick={() => handleSort("department")}
                     className="gap-1 min-h-[44px] font-medium"
                     data-testid="button-sort-department"
+                    aria-label={`부서로 정렬, 현재 ${sortField === "department" ? (sortDirection === "asc" ? "오름차순" : sortDirection === "desc" ? "내림차순" : "정렬 안 됨") : "정렬 안 됨"}`}
                   >
                     부서
-                    <SortIcon field="department" />
+                    <SortIcon field="department" sortField={sortField} sortDirection={sortDirection} />
                   </Button>
                 </TableHead>
                 <TableHead className="hidden md:table-cell">
@@ -130,7 +164,40 @@ export default function BudgetDataTable({ data, onDownloadCSV }: BudgetDataTable
                     data-testid="button-sort-account"
                   >
                     계정과목
-                    <SortIcon field="accountCategory" />
+                    <SortIcon field="accountCategory" sortField={sortField} sortDirection={sortDirection} />
+                  </Button>
+                </TableHead>
+                <TableHead className="hidden xl:table-cell">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleSort("isWithinBudget")}
+                    className="gap-1 min-h-[44px] font-medium"
+                  >
+                    예산 내/외
+                    <SortIcon field="isWithinBudget" sortField={sortField} sortDirection={sortDirection} />
+                  </Button>
+                </TableHead>
+                <TableHead className="hidden xl:table-cell">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleSort("businessDivision")}
+                    className="gap-1 min-h-[44px] font-medium"
+                  >
+                    사업구분
+                    <SortIcon field="businessDivision" sortField={sortField} sortDirection={sortDirection} />
+                  </Button>
+                </TableHead>
+                <TableHead className="hidden 2xl:table-cell">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleSort("projectName")}
+                    className="gap-1 min-h-[44px] font-medium"
+                  >
+                    프로젝트명
+                    <SortIcon field="projectName" sortField={sortField} sortDirection={sortDirection} />
                   </Button>
                 </TableHead>
                 <TableHead>
@@ -142,7 +209,7 @@ export default function BudgetDataTable({ data, onDownloadCSV }: BudgetDataTable
                     data-testid="button-sort-month"
                   >
                     월
-                    <SortIcon field="month" />
+                    <SortIcon field="month" sortField={sortField} sortDirection={sortDirection} />
                   </Button>
                 </TableHead>
                 <TableHead className="text-right hidden sm:table-cell">
@@ -154,7 +221,7 @@ export default function BudgetDataTable({ data, onDownloadCSV }: BudgetDataTable
                     data-testid="button-sort-budget"
                   >
                     예산
-                    <SortIcon field="budgetAmount" />
+                    <SortIcon field="budgetAmount" sortField={sortField} sortDirection={sortDirection} />
                   </Button>
                 </TableHead>
                 <TableHead className="text-right">
@@ -166,7 +233,7 @@ export default function BudgetDataTable({ data, onDownloadCSV }: BudgetDataTable
                     data-testid="button-sort-actual"
                   >
                     실제
-                    <SortIcon field="actualAmount" />
+                    <SortIcon field="actualAmount" sortField={sortField} sortDirection={sortDirection} />
                   </Button>
                 </TableHead>
                 <TableHead className="text-right">
@@ -178,7 +245,7 @@ export default function BudgetDataTable({ data, onDownloadCSV }: BudgetDataTable
                     data-testid="button-sort-execution"
                   >
                     집행률
-                    <SortIcon field="executionRate" />
+                    <SortIcon field="executionRate" sortField={sortField} sortDirection={sortDirection} />
                   </Button>
                 </TableHead>
               </TableRow>
@@ -186,8 +253,17 @@ export default function BudgetDataTable({ data, onDownloadCSV }: BudgetDataTable
             <TableBody>
               {paginatedData.map((entry) => (
                 <TableRow key={entry.id} className="min-h-[56px]" data-testid={`row-budget-${entry.id}`}>
-                  <TableCell className="font-medium py-3">{entry.department.replace(' Core', '').replace(' Group', '')}</TableCell>
+                  <TableCell className="font-medium py-3">{shortenDepartmentName(entry.department)}</TableCell>
                   <TableCell className="text-sm hidden md:table-cell py-3">{entry.accountCategory}</TableCell>
+                  <TableCell className="hidden xl:table-cell py-3">
+                    <Badge variant={entry.isWithinBudget ? "default" : "destructive"} className="text-xs">
+                      {entry.isWithinBudget ? "예산 내" : "예산 외"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden xl:table-cell py-3 text-sm">{entry.businessDivision}</TableCell>
+                  <TableCell className="hidden 2xl:table-cell py-3 text-sm max-w-[150px] truncate" title={entry.projectName}>
+                    {entry.projectName}
+                  </TableCell>
                   <TableCell className="py-3">{entry.month}월</TableCell>
                   <TableCell className="text-right font-mono hidden sm:table-cell py-3">{formatCurrency(entry.budgetAmount)}</TableCell>
                   <TableCell className="text-right font-mono py-3">{formatCurrency(entry.actualAmount)}</TableCell>

@@ -22,7 +22,8 @@ export type Department =
   | "DX전략 Core Group"
   | "서비스혁신 Core"
   | "플랫폼혁신 Core"
-  | "백오피스혁신 Core";
+  | "백오피스혁신 Core"
+  | "러닝마케팅 Core";
 
 export type AccountCategory = 
   | "광고선전비(이벤트)"
@@ -34,6 +35,10 @@ export type AccountCategory =
   | "지급수수료(저작료)"
   | "지급수수료(제휴)";
 
+export type BusinessDivision = "키즈" | "초등" | "중등" | "전체";
+
+export type CostType = "고정비" | "변동비";
+
 export interface BudgetEntry {
   id: string;
   department: Department;
@@ -43,6 +48,12 @@ export interface BudgetEntry {
   budgetAmount: number;
   actualAmount: number;
   executionRate: number; // percentage
+  // 새로운 필드들
+  isWithinBudget: boolean; // 예산 내/외 (예산 외는 결산에만 해당)
+  businessDivision: BusinessDivision; // 사업구분
+  projectName: string; // 프로젝트명/세부항목 (필수)
+  calculationBasis: string; // 산정근거/집행내역 (적요를 대체)
+  costType: CostType; // 고정비/변동비
 }
 
 export interface MonthlyData {
