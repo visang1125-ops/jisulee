@@ -14,6 +14,7 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist", "public"),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1000, // 청크 크기 경고 제한 설정 (KB)
   },
   // Vercel deployment configuration
   server: {
