@@ -42,6 +42,11 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
+  // CORS 헤더는 항상 설정 (OPTIONS preflight 요청을 위해)
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
   // 개발 환경이거나 ALLOWED_ORIGINS가 설정되지 않은 경우 모든 origin 허용
   if (process.env.NODE_ENV === 'development' || !process.env.ALLOWED_ORIGINS) {
     if (origin) {
@@ -74,10 +79,7 @@ app.use((req, res, next) => {
     }
   }
   
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  
+  // OPTIONS preflight 요청은 즉시 응답
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
