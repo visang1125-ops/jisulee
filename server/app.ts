@@ -53,11 +53,24 @@ app.use((req, res, next) => {
   } else {
     // 프로덕션 환경에서 ALLOWED_ORIGINS가 설정된 경우
     const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
-    if (origin && allowedOrigins.includes(origin)) {
+    
+    // Vercel 도메인 패턴 체크 (예: *.vercel.app)
+    const isVercelDomain = origin && (
+      origin.includes('.vercel.app') || 
+      origin === 'https://jisulee.vercel.app'
+    );
+    
+    // 정확히 일치하거나 Vercel 도메인인 경우 허용
+    const isAllowed = origin && (
+      allowedOrigins.includes(origin) || 
+      isVercelDomain
+    );
+    
+    if (isAllowed) {
       res.setHeader('Access-Control-Allow-Origin', origin);
     } else if (origin) {
       // 허용되지 않은 origin인 경우 로그만 남기고 계속 진행 (CORS 에러 발생)
-      log(`CORS: Blocked origin ${origin}. Allowed: ${allowedOrigins.join(', ')}`, "warn");
+      log(`CORS: Blocked origin ${origin}. Allowed: ${allowedOrigins.join(', ')}, Vercel domains`, "warn");
     }
   }
   
