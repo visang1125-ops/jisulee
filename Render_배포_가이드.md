@@ -28,7 +28,7 @@
 
 **Build & Deploy:**
 - **Environment:** `Node`
-- **Build Command:** `npm run build`
+- **Build Command:** `npm run build:render`
 - **Start Command:** `npm start`
 
 **Plan:**
