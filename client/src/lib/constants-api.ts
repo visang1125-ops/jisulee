@@ -2,7 +2,13 @@
  * API 관련 상수
  */
 // API 기본 URL: 환경 변수가 있으면 사용, 없으면 상대 경로 사용
-export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// VITE_API_URL이 설정되어 있으면 그대로 사용하되, /api로 끝나지 않으면 자동으로 추가
+const rawApiUrl = import.meta.env.VITE_API_URL || '/api';
+export const API_BASE_URL = rawApiUrl.endsWith('/api') 
+  ? rawApiUrl 
+  : rawApiUrl.endsWith('/') 
+    ? `${rawApiUrl}api` 
+    : `${rawApiUrl}/api`;
 
 export const API_CONSTANTS = {
   // 재시도 설정
