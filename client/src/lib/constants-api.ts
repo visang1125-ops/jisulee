@@ -1,6 +1,9 @@
 /**
  * API 관련 상수
  */
+// API 기본 URL: 환경 변수가 있으면 사용, 없으면 상대 경로 사용
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
 export const API_CONSTANTS = {
   // 재시도 설정
   RETRY_COUNT: 1,

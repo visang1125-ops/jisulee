@@ -20,7 +20,7 @@ import { sumBy } from "@/utils/calculations";
 import { MONTHS_PER_YEAR } from "@shared/constants";
 import { logger } from "@/lib/logger";
 import { downloadCSV, downloadJSON } from "@/utils/csv-export";
-import { API_CONSTANTS } from "@/lib/constants-api";
+import { API_CONSTANTS, API_BASE_URL } from "@/lib/constants-api";
 
 interface DashboardProps {
   filters?: FilterState;
@@ -126,7 +126,7 @@ export default function Dashboard({ filters }: DashboardProps) {
 
   const handleDownloadCSV = async () => {
     try {
-      const response = await fetch("/api/budget/export/csv");
+      const response = await fetch(`${API_BASE_URL}/budget/export/csv`);
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -142,7 +142,7 @@ export default function Dashboard({ filters }: DashboardProps) {
 
   const handleDownloadJSON = async () => {
     try {
-      const response = await fetch("/api/budget/export/json");
+      const response = await fetch(`${API_BASE_URL}/budget/export/json`);
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -158,7 +158,7 @@ export default function Dashboard({ filters }: DashboardProps) {
 
   const handleDownloadTemplate = useCallback(async () => {
     try {
-      const response = await fetch("/api/budget/template/csv");
+      const response = await fetch(`${API_BASE_URL}/budget/template/csv`);
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -215,7 +215,7 @@ export default function Dashboard({ filters }: DashboardProps) {
     calculationBasis?: string;
     costType?: string;
   }>) => {
-    const response = await fetch("/api/budget/import", {
+    const response = await fetch(`${API_BASE_URL}/budget/import`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ entries }),

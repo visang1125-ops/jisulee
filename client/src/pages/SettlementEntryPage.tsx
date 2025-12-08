@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { DEPARTMENTS, ACCOUNT_CATEGORIES } from "@/lib/constants";
 import { BUSINESS_DIVISIONS, COST_TYPES, DEFAULT_YEAR, MONTHS_PER_YEAR } from "@shared/constants";
-import { API_CONSTANTS } from "@/lib/constants-api";
+import { API_CONSTANTS, API_BASE_URL } from "@/lib/constants-api";
 import { Loader2, Plus, CheckCircle2 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -77,7 +77,7 @@ export default function SettlementEntryPage() {
         costType: formData.costType,
       };
 
-      const response = await fetch("/api/budget", {
+      const response = await fetch(`${API_BASE_URL}/budget`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry),

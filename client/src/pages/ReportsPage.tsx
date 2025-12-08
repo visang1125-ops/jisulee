@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { useBudgetData, aggregateByDepartment, aggregateByAccount, calculateStats, type FilterState } from "@/hooks/useBudgetData";
 import { formatCurrency, formatShortCurrency, getExecutionRateColor, shortenDepartmentName } from "@/lib/utils";
 import { getSettlementMonth } from "@/lib/constants";
-import { API_CONSTANTS } from "@/lib/constants-api";
+import { API_CONSTANTS, API_BASE_URL } from "@/lib/constants-api";
 
 interface ReportsPageProps {
   filters?: FilterState;
@@ -110,7 +110,7 @@ export default function ReportsPage({ filters }: ReportsPageProps) {
 
   const handleDownloadCSV = async () => {
     try {
-      const response = await fetch("/api/budget/export/csv");
+      const response = await fetch(`${API_BASE_URL}/budget/export/csv`);
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -126,7 +126,7 @@ export default function ReportsPage({ filters }: ReportsPageProps) {
 
   const handleDownloadJSON = async () => {
     try {
-      const response = await fetch("/api/budget/export/json");
+      const response = await fetch(`${API_BASE_URL}/budget/export/json`);
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");

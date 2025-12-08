@@ -75,3 +75,4 @@ export function downloadJSON(data: BudgetEntry[], filename: string = "budget-dat
   URL.revokeObjectURL(link.href);
 }
 
+

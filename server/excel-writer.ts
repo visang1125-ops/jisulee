@@ -167,3 +167,4 @@ export function appendBudgetEntryToExcel(entry: BudgetEntry, filePath: string): 
   }
 }
 
+

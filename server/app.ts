@@ -38,6 +38,23 @@ app.use((req, res, next) => {
   next();
 });
 
+// CORS 설정 (프로덕션 환경에서 프론트엔드와 백엔드가 분리된 경우)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  // Vercel 배포 시 환경 변수로 허용할 origin 설정 가능
+  if (origin && (process.env.ALLOWED_ORIGINS?.split(',').includes(origin) || process.env.NODE_ENV === 'development')) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(express.json({
   verify: (req, _res, buf) => {
     req.rawBody = buf;

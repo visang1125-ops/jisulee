@@ -63,13 +63,15 @@ export function buildQueryString(filters?: FilterState): string {
 /**
  * 예산 데이터를 가져오는 커스텀 훅
  */
+import { API_BASE_URL } from "@/lib/constants-api";
+
 export function useBudgetData(filters?: FilterState) {
   const queryString = buildQueryString(filters);
   
   return useQuery<BudgetEntry[]>({
     queryKey: ["/api/budget", queryString],
     queryFn: async () => {
-      const url = queryString ? `/api/budget?${queryString}` : "/api/budget";
+      const url = queryString ? `${API_BASE_URL}/budget?${queryString}` : `${API_BASE_URL}/budget`;
       const response = await fetch(url);
       if (!response.ok) {
         let errorMessage = "데이터를 불러오는데 실패했습니다.";
