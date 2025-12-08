@@ -41,11 +41,9 @@ export default defineConfig({
   server: {
     port: process.env.PORT ? parseInt(process.env.PORT) : 5000,
   },
-  // PostCSS 경고 억제
+  // PostCSS 설정
   css: {
-    postcss: {
-      // Vite가 자동으로 from 옵션을 처리하므로 경고 무시
-    },
+    postcss: './postcss.config.js',
   },
   // 로그 레벨 설정 (명령줄에서 --logLevel warn 사용)
 });
