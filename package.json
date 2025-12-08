@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx server/index-dev.ts",
     "build": "npm run build:client && npm run build:server",
-    "build:client": "vite build --logLevel error",
-    "build:server": "esbuild server/index-prod.ts --platform=node --packages=external --bundle --format=esm --outfile=dist/index.js",
+    "build:client": "node node_modules/.bin/vite build --logLevel error",
+    "build:server": "node node_modules/.bin/esbuild server/index-prod.ts --platform=node --packages=external --bundle --format=esm --outfile=dist/index.js",
     "build:render": "npm install && npm run build",
     "build:vercel": "npm run build:client",
     "start": "cross-env NODE_ENV=production node dist/index.js",
