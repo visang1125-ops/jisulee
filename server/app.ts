@@ -41,10 +41,26 @@ app.use((req, res, next) => {
 // CORS 설정 (프로덕션 환경에서 프론트엔드와 백엔드가 분리된 경우)
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  // Vercel 배포 시 환경 변수로 허용할 origin 설정 가능
-  if (origin && (process.env.ALLOWED_ORIGINS?.split(',').includes(origin) || process.env.NODE_ENV === 'development')) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  
+  // 개발 환경이거나 ALLOWED_ORIGINS가 설정되지 않은 경우 모든 origin 허용
+  if (process.env.NODE_ENV === 'development' || !process.env.ALLOWED_ORIGINS) {
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      // origin이 없는 경우 (예: Postman, curl 등) 모든 origin 허용
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+  } else {
+    // 프로덕션 환경에서 ALLOWED_ORIGINS가 설정된 경우
+    const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else if (origin) {
+      // 허용되지 않은 origin인 경우 로그만 남기고 계속 진행 (CORS 에러 발생)
+      log(`CORS: Blocked origin ${origin}. Allowed: ${allowedOrigins.join(', ')}`, "warn");
+    }
   }
+  
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
