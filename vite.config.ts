@@ -2,50 +2,54 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
+const rootDir = import.meta.dirname;
+const clientDir = path.resolve(rootDir, "client");
+
 export default defineConfig({
   plugins: [react()],
-  root: path.resolve(import.meta.dirname, "client"),
-  base: '/', // Vercel 배포를 위한 base 경로
+  root: clientDir,
+  base: '/',
   resolve: {
     alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
+      "@": path.resolve(clientDir, "src"),
+      "@shared": path.resolve(rootDir, "shared"),
     },
   },
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist", "public"),
+    outDir: path.resolve(rootDir, "dist", "public"),
     emptyOutDir: true,
-    assetsDir: 'assets', // 정적 파일 디렉토리
-    cssCodeSplit: false, // CSS 코드 분할 비활성화 - 모든 CSS를 하나의 파일로 빌드하여 레이아웃 문제 방지
-    chunkSizeWarningLimit: 5000, // 청크 크기 경고 제한 설정 (KB) - 5MB로 증가하여 경고 억제
+    assetsDir: 'assets',
+    cssCodeSplit: false, // Single CSS file for better compatibility
+    cssMinify: true,
+    minify: 'esbuild',
+    sourcemap: false,
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        // 청크 크기 경고 억제
-        manualChunks: undefined,
-        // 정적 파일 경로 보장
+        // 모든 정적 파일을 assets 디렉토리에 통일 (Vercel 호환성)
         assetFileNames: 'assets/[name].[hash].[ext]',
         chunkFileNames: 'assets/[name].[hash].js',
         entryFileNames: 'assets/[name].[hash].js',
+        manualChunks: undefined,
       },
       onwarn(warning, warn) {
-        // 특정 경고 무시
+        // Suppress known warnings
         if (warning.code === 'DEPRECATED_FEATURE') return;
+        if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return;
         if (warning.message?.includes('chunk')) return;
         if (warning.message?.includes('PostCSS')) return;
-        // 나머지 경고는 표시
+        if (warning.message?.includes('from option')) return;
         warn(warning);
       },
     },
   },
-  // Vercel deployment configuration
+  css: {
+    postcss: path.resolve(rootDir, "postcss.config.js"),
+    devSourcemap: false,
+  },
   server: {
     port: process.env.PORT ? parseInt(process.env.PORT) : 5000,
   },
-  // PostCSS 설정 - Vite가 자동으로 postcss.config.js를 찾도록 함
-  css: {
-    // postcss.config.js를 자동으로 찾음
-  },
-  // 로그 레벨 설정 (명령줄에서 --logLevel warn 사용)
 });
 
 
