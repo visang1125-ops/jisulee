@@ -41,9 +41,9 @@ export default defineConfig({
   server: {
     port: process.env.PORT ? parseInt(process.env.PORT) : 5000,
   },
-  // PostCSS 설정
+  // PostCSS 설정 - Vite가 자동으로 postcss.config.js를 찾도록 함
   css: {
-    postcss: './postcss.config.js',
+    // postcss.config.js를 자동으로 찾음
   },
   // 로그 레벨 설정 (명령줄에서 --logLevel warn 사용)
 });
