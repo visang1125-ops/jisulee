@@ -16,7 +16,7 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, "dist", "public"),
     emptyOutDir: true,
     assetsDir: 'assets', // 정적 파일 디렉토리
-    cssCodeSplit: true, // CSS 코드 분할 활성화
+    cssCodeSplit: false, // CSS 코드 분할 비활성화 - 모든 CSS를 하나의 파일로 빌드하여 레이아웃 문제 방지
     chunkSizeWarningLimit: 5000, // 청크 크기 경고 제한 설정 (KB) - 5MB로 증가하여 경고 억제
     rollupOptions: {
       output: {
