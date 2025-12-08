@@ -5,6 +5,7 @@ import path from "path";
 export default defineConfig({
   plugins: [react()],
   root: path.resolve(import.meta.dirname, "client"),
+  base: '/', // Vercel 배포를 위한 base 경로
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
@@ -14,11 +15,17 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist", "public"),
     emptyOutDir: true,
+    assetsDir: 'assets', // 정적 파일 디렉토리
+    cssCodeSplit: true, // CSS 코드 분할 활성화
     chunkSizeWarningLimit: 5000, // 청크 크기 경고 제한 설정 (KB) - 5MB로 증가하여 경고 억제
     rollupOptions: {
       output: {
         // 청크 크기 경고 억제
         manualChunks: undefined,
+        // 정적 파일 경로 보장
+        assetFileNames: 'assets/[name].[hash].[ext]',
+        chunkFileNames: 'assets/[name].[hash].js',
+        entryFileNames: 'assets/[name].[hash].js',
       },
       onwarn(warning, warn) {
         // 특정 경고 무시
