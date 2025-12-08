@@ -73,22 +73,45 @@ export function useBudgetData(filters?: FilterState) {
     queryFn: async () => {
       const url = queryString ? `${API_BASE_URL}/budget?${queryString}` : `${API_BASE_URL}/budget`;
       const response = await fetch(url);
+      
+      // Content-Type 확인
+      const contentType = response.headers.get("content-type");
+      const isJson = contentType?.includes("application/json");
+      
       if (!response.ok) {
         let errorMessage = "데이터를 불러오는데 실패했습니다.";
-        try {
-          const errorData = await response.json();
-          if (errorData.error?.message) {
-            errorMessage = errorData.error.message;
-          } else if (errorData.message) {
-            errorMessage = errorData.message;
+        if (isJson) {
+          try {
+            const errorData = await response.json();
+            if (errorData.error?.message) {
+              errorMessage = errorData.error.message;
+            } else if (errorData.message) {
+              errorMessage = errorData.message;
+            }
+          } catch {
+            // JSON 파싱 실패 시 기본 메시지 사용
           }
-        } catch {
-          // JSON 파싱 실패 시 기본 메시지 사용
+        } else {
+          // HTML 응답인 경우 (404 페이지 등)
+          if (response.status === 404) {
+            errorMessage = `API 서버를 찾을 수 없습니다. (${url}) 백엔드 서버가 실행 중인지 확인해주세요.`;
+          } else {
+            errorMessage = `서버 오류가 발생했습니다. (${response.status})`;
+          }
         }
         const error = new Error(errorMessage) as Error & { status?: number; code?: string };
         error.status = response.status;
         throw error;
       }
+      
+      // JSON이 아닌 경우 에러
+      if (!isJson) {
+        const text = await response.text();
+        throw new Error(
+          `서버가 JSON이 아닌 응답을 반환했습니다. API URL이 올바른지 확인해주세요. (${url})`
+        );
+      }
+      
       return response.json();
     },
     retry: 1, // API_CONSTANTS.RETRY_COUNT
