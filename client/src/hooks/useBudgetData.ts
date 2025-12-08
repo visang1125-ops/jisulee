@@ -72,7 +72,28 @@ export function useBudgetData(filters?: FilterState) {
     queryKey: ["/api/budget", queryString],
     queryFn: async () => {
       const url = queryString ? `${API_BASE_URL}/budget?${queryString}` : `${API_BASE_URL}/budget`;
-      const response = await fetch(url);
+      
+      // 디버깅 정보
+      if (import.meta.env.DEV) {
+        console.log('📡 API 요청:', url);
+        console.log('🔗 API_BASE_URL:', API_BASE_URL);
+      }
+      
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+      } catch (error) {
+        // 네트워크 오류 (CORS, 연결 실패 등)
+        const errorMessage = error instanceof Error 
+          ? error.message 
+          : '네트워크 오류가 발생했습니다. 백엔드 서버가 실행 중인지 확인해주세요.';
+        throw new Error(`API 연결 실패: ${errorMessage}. URL: ${url}`);
+      }
       
       // Content-Type 확인
       const contentType = response.headers.get("content-type");

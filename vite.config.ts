@@ -14,11 +14,19 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist", "public"),
     emptyOutDir: true,
-    chunkSizeWarningLimit: 2000, // 청크 크기 경고 제한 설정 (KB) - 2MB로 증가
+    chunkSizeWarningLimit: 5000, // 청크 크기 경고 제한 설정 (KB) - 5MB로 증가하여 경고 억제
     rollupOptions: {
       output: {
         // 청크 크기 경고 억제
         manualChunks: undefined,
+      },
+      onwarn(warning, warn) {
+        // 특정 경고 무시
+        if (warning.code === 'DEPRECATED_FEATURE') return;
+        if (warning.message?.includes('chunk')) return;
+        if (warning.message?.includes('PostCSS')) return;
+        // 나머지 경고는 표시
+        warn(warning);
       },
     },
   },
